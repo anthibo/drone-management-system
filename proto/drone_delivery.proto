@@ -1,0 +1,132 @@
+syntax = "proto3";
+
+package drone;
+
+option go_package = "penny-assesment/internal/transport/grpcapi";
+
+message Location {
+  double lat = 1;
+  double lng = 2;
+}
+
+message TokenRequest {
+  string name = 1;
+  string role = 2;
+}
+
+message TokenResponse {
+  string token = 1;
+  string expires_at = 2;
+}
+
+message SubmitOrderRequest {
+  Location origin = 1;
+  Location destination = 2;
+}
+
+message OrderIDRequest {
+  string order_id = 1;
+}
+
+message FailOrderRequest {
+  string order_id = 1;
+  string reason = 2;
+}
+
+message HeartbeatRequest {
+  double lat = 1;
+  double lng = 2;
+}
+
+message ListOrdersRequest {
+  string status = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message UpdateOrderRequest {
+  string order_id = 1;
+  Location origin = 2;
+  Location destination = 3;
+}
+
+message DroneIDRequest {
+  string drone_id = 1;
+}
+
+message Empty {}
+
+message OrderResponse {
+  string id = 1;
+  string user_id = 2;
+  Location origin = 3;
+  Location destination = 4;
+  string status = 5;
+  string assigned_drone_id = 6;
+  Location handoff_origin = 7;
+  string created_at = 8;
+  string updated_at = 9;
+  string reserved_at = 10;
+  string picked_up_at = 11;
+  string delivered_at = 12;
+  string failed_at = 13;
+  string failure_reason = 14;
+}
+
+message OrderViewResponse {
+  OrderResponse order = 1;
+  Location current_location = 2;
+  int64 eta_seconds = 3;
+}
+
+message DroneResponse {
+  string id = 1;
+  string status = 2;
+  Location last_location = 3;
+  string last_heartbeat_at = 4;
+  string current_order_id = 5;
+  string created_at = 6;
+  string updated_at = 7;
+}
+
+message DroneStatusResponse {
+  DroneResponse drone = 1;
+  OrderViewResponse current_order = 2;
+}
+
+message ListOrdersResponse {
+  repeated OrderViewResponse orders = 1;
+}
+
+message ListDronesResponse {
+  repeated DroneResponse drones = 1;
+}
+
+service AuthService {
+  rpc IssueToken(TokenRequest) returns (TokenResponse);
+}
+
+service OrderService {
+  rpc SubmitOrder(SubmitOrderRequest) returns (OrderResponse);
+  rpc WithdrawOrder(OrderIDRequest) returns (OrderResponse);
+  rpc GetOrder(OrderIDRequest) returns (OrderViewResponse);
+}
+
+service DroneService {
+  rpc ReserveJob(Empty) returns (OrderResponse);
+  rpc PickupOrder(OrderIDRequest) returns (OrderResponse);
+  rpc DeliverOrder(OrderIDRequest) returns (OrderResponse);
+  rpc FailOrder(FailOrderRequest) returns (OrderResponse);
+  rpc MarkBroken(Empty) returns (DroneResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (DroneStatusResponse);
+  rpc CurrentOrder(Empty) returns (OrderViewResponse);
+}
+
+service AdminService {
+  rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse);
+  rpc UpdateOrder(UpdateOrderRequest) returns (OrderResponse);
+  rpc ListDrones(Empty) returns (ListDronesResponse);
+  rpc MarkDroneBroken(DroneIDRequest) returns (DroneResponse);
+  rpc MarkDroneFixed(DroneIDRequest) returns (DroneResponse);
+}
+

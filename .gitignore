@@ -1,0 +1,45 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/bin/
+/dist/
+
+# Go
+*.test
+*.out
+go.work
+go.work.sum
+vendor/
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env and secrets
+.env
+.env.local
+.env.*.local
+*.pem
+
+# Docker
+.docker/
+
+# Build / coverage
+coverage.txt
+coverage.html
+*.cover
+*.prof
+
+# Generated (optional: uncomment if you generate and don’t commit)
+# /internal/transport/thriftapi/gen-go/
+# *.pb.go
