@@ -1,0 +1,276 @@
+{
+  "info": {
+    "name": "Drone Delivery Management Backend (REST)",
+    "_postman_id": "b7f6d2f2-7b8c-4f89-b83f-5c1c6c7df3f4",
+    "description": "REST collection for the Drone Delivery Management Backend.\n\nAuth flow: Call /auth/token to issue a JWT for role enduser/drone/admin, then use Authorization: Bearer <token> on all other requests.\n\nVariables used: BASE_URL, ENDUSER_TOKEN, DRONE_TOKEN, ADMIN_TOKEN, ORDER_ID, DRONE_ID.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Issue Token (enduser)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BASE_URL}}/auth/token", "host": ["{{BASE_URL}}"], "path": ["auth", "token"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"alice\",\n  \"role\": \"enduser\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.environment.set('ENDUSER_TOKEN', json.token);",
+                  "pm.test('token issued', () => pm.expect(json.token).to.be.a('string'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Issue Token (drone)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BASE_URL}}/auth/token", "host": ["{{BASE_URL}}"], "path": ["auth", "token"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"dr-1\",\n  \"role\": \"drone\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.environment.set('DRONE_TOKEN', json.token);",
+                  "pm.test('token issued', () => pm.expect(json.token).to.be.a('string'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Issue Token (admin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BASE_URL}}/auth/token", "host": ["{{BASE_URL}}"], "path": ["auth", "token"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"boss\",\n  \"role\": \"admin\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.environment.set('ADMIN_TOKEN', json.token);",
+                  "pm.test('token issued', () => pm.expect(json.token).to.be.a('string'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Enduser",
+      "item": [
+        {
+          "name": "Submit Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{ENDUSER_TOKEN}}" }
+            ],
+            "url": { "raw": "{{BASE_URL}}/orders", "host": ["{{BASE_URL}}"], "path": ["orders"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"origin\": {\"lat\": 24.7136, \"lng\": 46.6753},\n  \"destination\": {\"lat\": 24.7743, \"lng\": 46.7386}\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.environment.set('ORDER_ID', json.id);",
+                  "pm.test('order created', () => pm.expect(json.id).to.be.a('string'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Order Details",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ENDUSER_TOKEN}}" }],
+            "url": { "raw": "{{BASE_URL}}/orders/{{ORDER_ID}}", "host": ["{{BASE_URL}}"], "path": ["orders", "{{ORDER_ID}}"] }
+          }
+        },
+        {
+          "name": "Withdraw Order",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ENDUSER_TOKEN}}" }],
+            "url": { "raw": "{{BASE_URL}}/orders/{{ORDER_ID}}/withdraw", "host": ["{{BASE_URL}}"], "path": ["orders", "{{ORDER_ID}}", "withdraw"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Drone",
+      "item": [
+        {
+          "name": "Reserve Job",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{DRONE_TOKEN}}" }],
+            "url": { "raw": "{{BASE_URL}}/drone/jobs/reserve", "host": ["{{BASE_URL}}"], "path": ["drone", "jobs", "reserve"] }
+          }
+        },
+        {
+          "name": "Pickup Order",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{DRONE_TOKEN}}" }],
+            "url": { "raw": "{{BASE_URL}}/drone/orders/{{ORDER_ID}}/pickup", "host": ["{{BASE_URL}}"], "path": ["drone", "orders", "{{ORDER_ID}}", "pickup"] }
+          }
+        },
+        {
+          "name": "Deliver Order",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{DRONE_TOKEN}}" }],
+            "url": { "raw": "{{BASE_URL}}/drone/orders/{{ORDER_ID}}/deliver", "host": ["{{BASE_URL}}"], "path": ["drone", "orders", "{{ORDER_ID}}", "deliver"] }
+          }
+        },
+        {
+          "name": "Fail Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{DRONE_TOKEN}}" }
+            ],
+            "url": { "raw": "{{BASE_URL}}/drone/orders/{{ORDER_ID}}/fail", "host": ["{{BASE_URL}}"], "path": ["drone", "orders", "{{ORDER_ID}}", "fail"] },
+            "body": { "mode": "raw", "raw": "{\n  \"reason\": \"battery\"\n}" }
+          }
+        },
+        {
+          "name": "Mark Drone Broken",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{DRONE_TOKEN}}" }],
+            "url": { "raw": "{{BASE_URL}}/drone/broken", "host": ["{{BASE_URL}}"], "path": ["drone", "broken"] }
+          }
+        },
+        {
+          "name": "Heartbeat (location + status)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{DRONE_TOKEN}}" }
+            ],
+            "url": { "raw": "{{BASE_URL}}/drone/heartbeat", "host": ["{{BASE_URL}}"], "path": ["drone", "heartbeat"] },
+            "body": { "mode": "raw", "raw": "{\n  \"lat\": 24.72,\n  \"lng\": 46.68\n}" }
+          }
+        },
+        {
+          "name": "Get Current Order",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{DRONE_TOKEN}}" }],
+            "url": { "raw": "{{BASE_URL}}/drone/orders/current", "host": ["{{BASE_URL}}"], "path": ["drone", "orders", "current"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "List Orders (bulk)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }],
+            "url": {
+              "raw": "{{BASE_URL}}/admin/orders?limit=10&offset=0",
+              "host": ["{{BASE_URL}}"],
+              "path": ["admin", "orders"],
+              "query": [
+                { "key": "limit", "value": "10" },
+                { "key": "offset", "value": "0" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Order (origin/destination)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }
+            ],
+            "url": { "raw": "{{BASE_URL}}/admin/orders/{{ORDER_ID}}", "host": ["{{BASE_URL}}"], "path": ["admin", "orders", "{{ORDER_ID}}"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"destination\": {\"lat\": 24.80, \"lng\": 46.80}\n}"
+            }
+          }
+        },
+        {
+          "name": "List Drones",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }],
+            "url": { "raw": "{{BASE_URL}}/admin/drones", "host": ["{{BASE_URL}}"], "path": ["admin", "drones"] }
+          }
+        },
+        {
+          "name": "Mark Drone Broken",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }],
+            "url": { "raw": "{{BASE_URL}}/admin/drones/{{DRONE_ID}}/broken", "host": ["{{BASE_URL}}"], "path": ["admin", "drones", "{{DRONE_ID}}", "broken"] }
+          }
+        },
+        {
+          "name": "Mark Drone Fixed",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }],
+            "url": { "raw": "{{BASE_URL}}/admin/drones/{{DRONE_ID}}/fixed", "host": ["{{BASE_URL}}"], "path": ["admin", "drones", "{{DRONE_ID}}", "fixed"] }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "BASE_URL", "value": "http://127.0.0.1:18080" },
+    { "key": "ENDUSER_TOKEN", "value": "" },
+    { "key": "DRONE_TOKEN", "value": "" },
+    { "key": "ADMIN_TOKEN", "value": "" },
+    { "key": "ORDER_ID", "value": "" },
+    { "key": "DRONE_ID", "value": "dr-1" }
+  ]
+}
