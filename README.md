@@ -1,137 +1,115 @@
 # Drone Delivery Management Backend
 
-Single Go service exposing **REST**, **gRPC**, and **Thrift** APIs with JWT auth and Postgres persistence.
+A single Go service exposing **REST**, **gRPC**, and **Thrift** APIs with **JWT auth**, **Postgres** persistence, and **NATS eventing** via the **transactional outbox pattern**.
 
-## Features
-- JWT-based authentication (`/auth/token`) with roles: `admin`, `enduser`, `drone`
-- REST + gRPC + Thrift transports on a shared service layer
-- Postgres persistence with migrations
-- Concurrency-safe job reservation
-- ETA computation using Haversine distance + fixed drone speed
+![System Architecture](./assets/image.png)
+
+## What this service does
+
+### Roles
+- **enduser**: create orders, withdraw before pickup, track progress + location + ETA
+- **drone**: reserve jobs, pickup, deliver/fail, heartbeat (location + status), mark broken
+- **admin**: list orders (bulk), update origin/destination, list drones, mark drones broken/fixed
+
+### Core ideas
+- **One service layer**: REST/gRPC/Thrift are thin transports over the same business logic.
+- **Concurrency-safe reservation**: reservation uses DB locking (`FOR UPDATE SKIP LOCKED`).
+- **ETA**: Haversine distance + fixed drone speed (`DRONE_SPEED_MPS`).
+- **Events**: order/drone changes are written to Postgres outbox rows and published to NATS (at-least-once).
+
+---
 
 ## Requirements
-- Go 1.21+
-- Postgres (local or Docker)
+- Go **1.21+**
+- Docker (for Postgres + NATS)
 
-## Quick Start
+---
+
+## Quick Start (local)
 
 ### 1) Start Postgres + NATS
 ```bash
 docker compose up -d
 ```
 
+> Note: `docker-compose.yml` maps Postgres to host port **65432** (to avoid clashing with local Postgres).
+
 ### 2) Run the server
 ```bash
-export DATABASE_URL="postgres://drone:drone@localhost:5432/drone?sslmode=disable"
+export DATABASE_URL="postgres://drone:drone@127.0.0.1:65432/drone?sslmode=disable"
 export JWT_SECRET="dev-secret"
-export NATS_URL="nats://localhost:4222"
+export NATS_URL="nats://127.0.0.1:4222"
+
+# Optional: avoid collisions
+# export HTTP_ADDR=":18080" GRPC_ADDR=":19090" THRIFT_ADDR=":19091"
 
 go run ./cmd/server
 ```
 
-The service will listen on:
+Default ports:
 - REST: `:8080`
 - gRPC: `:9090`
 - Thrift: `:9091`
 
-## Authentication
+---
 
-Issue a token:
+## Postman
+
+Import both:
+- `tools/postman/drone.postman_collection.json`
+- `tools/postman/drone.postman_environment.json`
+
+Then run:
+1) Auth → Issue Token (enduser)
+2) Auth → Issue Token (drone)
+3) Auth → Issue Token (admin)
+4) Enduser → Submit Order (stores `ORDER_ID` automatically)
+
+---
+
+## REST (curl) smoke test
+
+### Issue a token
 ```bash
-curl -s -X POST http://localhost:8080/auth/token \
+curl -s -X POST http://127.0.0.1:8080/auth/token \
   -H "Content-Type: application/json" \
   -d '{"name":"alice","role":"enduser"}'
 ```
 
-Use the token as a bearer:
-```
-Authorization: Bearer <token>
-```
+---
 
-## REST Examples
+## Watch NATS events
 
-Submit an order:
+The `nats:2.10` server image does **not** include the `nats` CLI. Use a temporary CLI container:
+
 ```bash
-curl -s -X POST http://localhost:8080/orders \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <token>" \
-  -d '{"origin":{"lat":24.7136,"lng":46.6753},"destination":{"lat":24.7743,"lng":46.7386}}'
+docker run --rm -it --network drone-management-system_default natsio/nats-box:latest \
+  nats sub drone.events --server nats://drone-management-system-nats-1:4222
 ```
 
-Reserve a job (drone role):
-```bash
-curl -s -X POST http://localhost:8080/drone/jobs/reserve \
-  -H "Authorization: Bearer <token>"
-```
+Trigger any state change (submit/reserve/pickup/deliver/broken) and you’ll see events.
+
+---
 
 ## gRPC
 
-The gRPC server uses a **custom JSON codec** (see `internal/transport/grpcapi/codec.go`) instead of protobuf messages.
+This gRPC server uses a **custom JSON codec** (see `internal/transport/grpcapi/codec.go`) instead of protobuf messages.
 
 Implications:
-- **grpcurl will not work** (no server reflection + messages are not `proto.Message`).
-- Use a small Go client that forces the `json` codec and passes auth via metadata header `authorization: Bearer <token>`.
+- **grpcurl/Postman gRPC won’t work** (no reflection + messages are not `proto.Message`).
+- Use a small Go client that forces the `json` codec.
 
-Minimal smoke-test approach:
-- Create a small client similar to `tmp_grpc_client.go` (local helper) and run:
-  ```bash
-  go run tmp_grpc_client.go
-  ```
+---
 
 ## Thrift
 
-The Thrift server uses the **binary protocol** and the IDL in `thrift/drone_delivery.thrift`.
+- IDL: `thrift/drone_delivery.thrift`
+- Protocol: binary (server uses framed transport)
+- Auth token is included in request struct field `authToken`
 
-Notes:
-- Auth token is included in each request struct field `authToken`.
-- For local smoke tests, you can use a small Go client (e.g. `tmp_thrift_raw_client.go`) to call `IssueToken` and validate the transport.
-
-## Eventing (Outbox + NATS)
-
-To watch published events on the configured subject (default: `drone.events`), subscribe via the NATS container:
-
-```bash
-docker exec -it drone-management-system-nats-1 sh -lc "nats sub drone.events"
-```
-
-Then trigger state changes (submit order / reserve / pickup / deliver / mark broken) via REST to see events printed.
-
-## Configuration
-- `DATABASE_URL` (required)
-- `JWT_SECRET` (required)
-- `JWT_TTL` (default `1h`)
-- `HTTP_ADDR` (default `:8080`)
-- `GRPC_ADDR` (default `:9090`)
-- `THRIFT_ADDR` (default `:9091`)
-- `DRONE_SPEED_MPS` (default `15.0`)
-- `MIGRATE_ON_START` (default `true`)
-- `NATS_URL` (default `nats://127.0.0.1:4222`)
-- `NATS_SUBJECT` (default `drone.events`)
-- `OUTBOX_ENABLED` (default `true`)
-- `OUTBOX_POLL_INTERVAL` (default `1s`)
-- `OUTBOX_BATCH_SIZE` (default `50`)
+---
 
 ## Tests
 ```bash
 go test ./...
 ```
-
-## Separate Outbox Worker
-If you want event publishing decoupled from the API process:
-1. Run API with `OUTBOX_ENABLED=false`
-2. Run worker:
-```bash
-export DATABASE_URL="postgres://drone:drone@localhost:5432/drone?sslmode=disable"
-export NATS_URL="nats://localhost:4222"
-export OUTBOX_ENABLED=true
-go run ./cmd/worker
-```
-
-## Notes
-- Drones that mark themselves broken always create a handoff job even if fixed later.
-- Endusers can withdraw orders before pickup; reserved orders are unassigned during withdrawal.
-- The outbox worker provides **at-least-once** delivery. Consumers should be idempotent.
-
-## Eventing (Outbox + NATS)
-Order and drone state changes enqueue outbox events in Postgres.  
-The outbox worker publishes to NATS on the configured subject, then marks events as published.
