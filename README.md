@@ -66,13 +66,35 @@ curl -s -X POST http://localhost:8080/drone/jobs/reserve \
 
 ## gRPC
 
-The gRPC server uses a JSON codec instead of protobuf generation (no generated code required).
-Clients must send `content-type: application/grpc+json` and use JSON payloads matching the structures in `internal/transport/mapper.go` and `internal/transport/grpcapi/types.go`.
+The gRPC server uses a **custom JSON codec** (see `internal/transport/grpcapi/codec.go`) instead of protobuf messages.
+
+Implications:
+- **grpcurl will not work** (no server reflection + messages are not `proto.Message`).
+- Use a small Go client that forces the `json` codec and passes auth via metadata header `authorization: Bearer <token>`.
+
+Minimal smoke-test approach:
+- Create a small client similar to `tmp_grpc_client.go` (local helper) and run:
+  ```bash
+  go run tmp_grpc_client.go
+  ```
 
 ## Thrift
 
-The Thrift server uses the binary protocol and the IDL in `thrift/drone_delivery.thrift`.
-Auth token is included in each request struct field `authToken`.
+The Thrift server uses the **binary protocol** and the IDL in `thrift/drone_delivery.thrift`.
+
+Notes:
+- Auth token is included in each request struct field `authToken`.
+- For local smoke tests, you can use a small Go client (e.g. `tmp_thrift_raw_client.go`) to call `IssueToken` and validate the transport.
+
+## Eventing (Outbox + NATS)
+
+To watch published events on the configured subject (default: `drone.events`), subscribe via the NATS container:
+
+```bash
+docker exec -it drone-management-system-nats-1 sh -lc "nats sub drone.events"
+```
+
+Then trigger state changes (submit order / reserve / pickup / deliver / mark broken) via REST to see events printed.
 
 ## Configuration
 - `DATABASE_URL` (required)

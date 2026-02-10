@@ -285,19 +285,41 @@ func (s *Service) DroneMarkBroken(ctx context.Context, droneID string) (*domain.
 		if err != nil {
 			return nil, err
 		}
-		order.Status = domain.OrderStatusHandoffRequested
-		order.AssignedDroneID = nil
-		if drone.LastLocation != nil {
-			loc := *drone.LastLocation
-			order.HandoffOrigin = &loc
-		}
-		order.UpdatedAt = now
-		if err := tx.UpdateOrder(ctx, order); err != nil {
-			return nil, err
-		}
-		drone.CurrentOrderID = nil
-		if err := tx.EnqueueEvent(ctx, events.NewOrderEvent(events.EventOrderHandoffRequested, order, drone, now)); err != nil {
-			return nil, err
+
+		// Only create a handoff job if the package is actually in-flight.
+		// If the order is merely RESERVED (not picked up yet), requeue it back to CREATED.
+		switch order.Status {
+		case domain.OrderStatusPickedUp:
+			order.Status = domain.OrderStatusHandoffRequested
+			order.AssignedDroneID = nil
+			if drone.LastLocation != nil {
+				loc := *drone.LastLocation
+				order.HandoffOrigin = &loc
+			}
+			order.UpdatedAt = now
+			if err := tx.UpdateOrder(ctx, order); err != nil {
+				return nil, err
+			}
+			drone.CurrentOrderID = nil
+			if err := tx.EnqueueEvent(ctx, events.NewOrderEvent(events.EventOrderHandoffRequested, order, drone, now)); err != nil {
+				return nil, err
+			}
+		case domain.OrderStatusReserved:
+			order.Status = domain.OrderStatusCreated
+			order.AssignedDroneID = nil
+			order.ReservedAt = nil
+			order.HandoffOrigin = nil
+			order.UpdatedAt = now
+			if err := tx.UpdateOrder(ctx, order); err != nil {
+				return nil, err
+			}
+			drone.CurrentOrderID = nil
+			if err := tx.EnqueueEvent(ctx, events.NewOrderEvent(events.EventOrderUpdated, order, drone, now)); err != nil {
+				return nil, err
+			}
+		default:
+			// For any other state, don't mutate the order; still mark drone broken.
+			drone.CurrentOrderID = nil
 		}
 	}
 	drone.UpdatedAt = now

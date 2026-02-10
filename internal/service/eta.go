@@ -19,7 +19,15 @@ type DroneStatusView struct {
 
 func CurrentLocation(order *domain.Order, drone *domain.Drone) *domain.Location {
 	switch order.Status {
-	case domain.OrderStatusCreated, domain.OrderStatusReserved:
+	case domain.OrderStatusCreated:
+		loc := order.Origin
+		return &loc
+	case domain.OrderStatusReserved:
+		// If this reservation came from a handoff job, preserve the pickup location.
+		if order.HandoffOrigin != nil {
+			loc := *order.HandoffOrigin
+			return &loc
+		}
 		loc := order.Origin
 		return &loc
 	case domain.OrderStatusPickedUp:
@@ -45,8 +53,14 @@ func ComputeETA(order *domain.Order, drone *domain.Drone, speedMPS float64) *int
 	}
 	var from domain.Location
 	switch order.Status {
-	case domain.OrderStatusCreated, domain.OrderStatusReserved:
+	case domain.OrderStatusCreated:
 		from = order.Origin
+	case domain.OrderStatusReserved:
+		if order.HandoffOrigin != nil {
+			from = *order.HandoffOrigin
+		} else {
+			from = order.Origin
+		}
 	case domain.OrderStatusPickedUp:
 		if drone == nil || drone.LastLocation == nil {
 			return nil

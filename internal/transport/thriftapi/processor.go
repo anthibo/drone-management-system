@@ -31,22 +31,22 @@ func (p processorFunc) Process(ctx context.Context, seqID int32, in, out thrift.
 func NewProcessor(svc *service.Service, authenticator *auth.Authenticator) *Processor {
 	p := &Processor{svc: svc, auth: authenticator}
 	p.processorMap = map[string]thrift.TProcessorFunction{
-		"IssueToken":        processorFunc{fn: p.handleIssueToken},
-		"SubmitOrder":       processorFunc{fn: p.handleSubmitOrder},
-		"WithdrawOrder":     processorFunc{fn: p.handleWithdrawOrder},
-		"GetOrder":          processorFunc{fn: p.handleGetOrder},
-		"ReserveJob":        processorFunc{fn: p.handleReserveJob},
-		"PickupOrder":       processorFunc{fn: p.handlePickupOrder},
-		"DeliverOrder":      processorFunc{fn: p.handleDeliverOrder},
-		"FailOrder":         processorFunc{fn: p.handleFailOrder},
-		"MarkBroken":        processorFunc{fn: p.handleMarkBroken},
-		"Heartbeat":         processorFunc{fn: p.handleHeartbeat},
-		"CurrentOrder":      processorFunc{fn: p.handleCurrentOrder},
-		"ListOrders":        processorFunc{fn: p.handleAdminListOrders},
-		"UpdateOrder":       processorFunc{fn: p.handleAdminUpdateOrder},
-		"ListDrones":        processorFunc{fn: p.handleAdminListDrones},
-		"MarkDroneBroken":   processorFunc{fn: p.handleAdminMarkDroneBroken},
-		"MarkDroneFixed":    processorFunc{fn: p.handleAdminMarkDroneFixed},
+		"IssueToken":      processorFunc{fn: p.handleIssueToken},
+		"SubmitOrder":     processorFunc{fn: p.handleSubmitOrder},
+		"WithdrawOrder":   processorFunc{fn: p.handleWithdrawOrder},
+		"GetOrder":        processorFunc{fn: p.handleGetOrder},
+		"ReserveJob":      processorFunc{fn: p.handleReserveJob},
+		"PickupOrder":     processorFunc{fn: p.handlePickupOrder},
+		"DeliverOrder":    processorFunc{fn: p.handleDeliverOrder},
+		"FailOrder":       processorFunc{fn: p.handleFailOrder},
+		"MarkBroken":      processorFunc{fn: p.handleMarkBroken},
+		"Heartbeat":       processorFunc{fn: p.handleHeartbeat},
+		"CurrentOrder":    processorFunc{fn: p.handleCurrentOrder},
+		"ListOrders":      processorFunc{fn: p.handleAdminListOrders},
+		"UpdateOrder":     processorFunc{fn: p.handleAdminUpdateOrder},
+		"ListDrones":      processorFunc{fn: p.handleAdminListDrones},
+		"MarkDroneBroken": processorFunc{fn: p.handleAdminMarkDroneBroken},
+		"MarkDroneFixed":  processorFunc{fn: p.handleAdminMarkDroneFixed},
 	}
 	return p
 }
@@ -509,6 +509,9 @@ func writeTokenResponse(ctx context.Context, out thrift.TProtocol, token string,
 	if err := out.WriteFieldEnd(ctx); err != nil {
 		return err
 	}
+	if err := out.WriteFieldStop(ctx); err != nil {
+		return err
+	}
 	return out.WriteStructEnd(ctx)
 }
 
@@ -850,6 +853,7 @@ func writeLocation(ctx context.Context, out thrift.TProtocol, loc domain.Locatio
 }
 
 func readTokenRequest(ctx context.Context, in thrift.TProtocol) (string, string, error) {
+	// Expected args struct: IssueToken_args { 1: TokenRequest request }
 	if _, err := in.ReadStructBegin(ctx); err != nil {
 		return "", "", err
 	}
@@ -862,16 +866,41 @@ func readTokenRequest(ctx context.Context, in thrift.TProtocol) (string, string,
 		if fieldType == thrift.STOP {
 			break
 		}
-		switch fieldID {
-		case 1:
-			name, err = in.ReadString(ctx)
-		case 2:
-			role, err = in.ReadString(ctx)
-		default:
-			err = in.Skip(ctx, fieldType)
-		}
-		if err != nil {
-			return "", "", err
+		if fieldID == 1 && fieldType == thrift.STRUCT {
+			// TokenRequest { 1:name, 2:role }
+			if _, err := in.ReadStructBegin(ctx); err != nil {
+				return "", "", err
+			}
+			for {
+				_, ft, fid, err := in.ReadFieldBegin(ctx)
+				if err != nil {
+					return "", "", err
+				}
+				if ft == thrift.STOP {
+					break
+				}
+				switch fid {
+				case 1:
+					name, err = in.ReadString(ctx)
+				case 2:
+					role, err = in.ReadString(ctx)
+				default:
+					err = in.Skip(ctx, ft)
+				}
+				if err != nil {
+					return "", "", err
+				}
+				if err := in.ReadFieldEnd(ctx); err != nil {
+					return "", "", err
+				}
+			}
+			if err := in.ReadStructEnd(ctx); err != nil {
+				return "", "", err
+			}
+		} else {
+			if err := in.Skip(ctx, fieldType); err != nil {
+				return "", "", err
+			}
 		}
 		if err := in.ReadFieldEnd(ctx); err != nil {
 			return "", "", err
@@ -887,6 +916,7 @@ func readTokenRequest(ctx context.Context, in thrift.TProtocol) (string, string,
 }
 
 func readAuthRequest(ctx context.Context, in thrift.TProtocol) (string, error) {
+	// Expected args struct: <Method>_args { 1: AuthRequest request }
 	if _, err := in.ReadStructBegin(ctx); err != nil {
 		return "", err
 	}
@@ -899,14 +929,37 @@ func readAuthRequest(ctx context.Context, in thrift.TProtocol) (string, error) {
 		if fieldType == thrift.STOP {
 			break
 		}
-		switch fieldID {
-		case 1:
-			token, err = in.ReadString(ctx)
-		default:
-			err = in.Skip(ctx, fieldType)
-		}
-		if err != nil {
-			return "", err
+		if fieldID == 1 && fieldType == thrift.STRUCT {
+			if _, err := in.ReadStructBegin(ctx); err != nil {
+				return "", err
+			}
+			for {
+				_, ft, fid, err := in.ReadFieldBegin(ctx)
+				if err != nil {
+					return "", err
+				}
+				if ft == thrift.STOP {
+					break
+				}
+				if fid == 1 {
+					token, err = in.ReadString(ctx)
+				} else {
+					err = in.Skip(ctx, ft)
+				}
+				if err != nil {
+					return "", err
+				}
+				if err := in.ReadFieldEnd(ctx); err != nil {
+					return "", err
+				}
+			}
+			if err := in.ReadStructEnd(ctx); err != nil {
+				return "", err
+			}
+		} else {
+			if err := in.Skip(ctx, fieldType); err != nil {
+				return "", err
+			}
 		}
 		if err := in.ReadFieldEnd(ctx); err != nil {
 			return "", err
@@ -922,6 +975,7 @@ func readAuthRequest(ctx context.Context, in thrift.TProtocol) (string, error) {
 }
 
 func readOrderIDRequest(ctx context.Context, in thrift.TProtocol) (string, string, error) {
+	// Expected args struct: <Method>_args { 1: OrderIDRequest request }
 	if _, err := in.ReadStructBegin(ctx); err != nil {
 		return "", "", err
 	}
@@ -934,16 +988,40 @@ func readOrderIDRequest(ctx context.Context, in thrift.TProtocol) (string, strin
 		if fieldType == thrift.STOP {
 			break
 		}
-		switch fieldID {
-		case 1:
-			token, err = in.ReadString(ctx)
-		case 2:
-			orderID, err = in.ReadString(ctx)
-		default:
-			err = in.Skip(ctx, fieldType)
-		}
-		if err != nil {
-			return "", "", err
+		if fieldID == 1 && fieldType == thrift.STRUCT {
+			if _, err := in.ReadStructBegin(ctx); err != nil {
+				return "", "", err
+			}
+			for {
+				_, ft, fid, err := in.ReadFieldBegin(ctx)
+				if err != nil {
+					return "", "", err
+				}
+				if ft == thrift.STOP {
+					break
+				}
+				switch fid {
+				case 1:
+					token, err = in.ReadString(ctx)
+				case 2:
+					orderID, err = in.ReadString(ctx)
+				default:
+					err = in.Skip(ctx, ft)
+				}
+				if err != nil {
+					return "", "", err
+				}
+				if err := in.ReadFieldEnd(ctx); err != nil {
+					return "", "", err
+				}
+			}
+			if err := in.ReadStructEnd(ctx); err != nil {
+				return "", "", err
+			}
+		} else {
+			if err := in.Skip(ctx, fieldType); err != nil {
+				return "", "", err
+			}
 		}
 		if err := in.ReadFieldEnd(ctx); err != nil {
 			return "", "", err
@@ -963,6 +1041,7 @@ func readDroneIDRequest(ctx context.Context, in thrift.TProtocol) (string, strin
 }
 
 func readFailOrderRequest(ctx context.Context, in thrift.TProtocol) (string, string, string, error) {
+	// Expected args struct: FailOrder_args { 1: FailOrderRequest request }
 	if _, err := in.ReadStructBegin(ctx); err != nil {
 		return "", "", "", err
 	}
@@ -975,18 +1054,42 @@ func readFailOrderRequest(ctx context.Context, in thrift.TProtocol) (string, str
 		if fieldType == thrift.STOP {
 			break
 		}
-		switch fieldID {
-		case 1:
-			token, err = in.ReadString(ctx)
-		case 2:
-			orderID, err = in.ReadString(ctx)
-		case 3:
-			reason, err = in.ReadString(ctx)
-		default:
-			err = in.Skip(ctx, fieldType)
-		}
-		if err != nil {
-			return "", "", "", err
+		if fieldID == 1 && fieldType == thrift.STRUCT {
+			if _, err := in.ReadStructBegin(ctx); err != nil {
+				return "", "", "", err
+			}
+			for {
+				_, ft, fid, err := in.ReadFieldBegin(ctx)
+				if err != nil {
+					return "", "", "", err
+				}
+				if ft == thrift.STOP {
+					break
+				}
+				switch fid {
+				case 1:
+					token, err = in.ReadString(ctx)
+				case 2:
+					orderID, err = in.ReadString(ctx)
+				case 3:
+					reason, err = in.ReadString(ctx)
+				default:
+					err = in.Skip(ctx, ft)
+				}
+				if err != nil {
+					return "", "", "", err
+				}
+				if err := in.ReadFieldEnd(ctx); err != nil {
+					return "", "", "", err
+				}
+			}
+			if err := in.ReadStructEnd(ctx); err != nil {
+				return "", "", "", err
+			}
+		} else {
+			if err := in.Skip(ctx, fieldType); err != nil {
+				return "", "", "", err
+			}
 		}
 		if err := in.ReadFieldEnd(ctx); err != nil {
 			return "", "", "", err
@@ -1002,6 +1105,7 @@ func readFailOrderRequest(ctx context.Context, in thrift.TProtocol) (string, str
 }
 
 func readHeartbeatRequest(ctx context.Context, in thrift.TProtocol) (string, domain.Location, error) {
+	// Expected args struct: Heartbeat_args { 1: HeartbeatRequest request }
 	if _, err := in.ReadStructBegin(ctx); err != nil {
 		return "", domain.Location{}, err
 	}
@@ -1015,16 +1119,47 @@ func readHeartbeatRequest(ctx context.Context, in thrift.TProtocol) (string, dom
 		if fieldType == thrift.STOP {
 			break
 		}
-		switch fieldID {
-		case 1:
-			token, err = in.ReadString(ctx)
-		case 2:
-			loc, err = readLocation(ctx, in)
-		default:
-			err = in.Skip(ctx, fieldType)
-		}
-		if err != nil {
-			return "", domain.Location{}, err
+		if fieldID == 1 && fieldType == thrift.STRUCT {
+			if _, err := in.ReadStructBegin(ctx); err != nil {
+				return "", domain.Location{}, err
+			}
+			for {
+				_, ft, fid, err := in.ReadFieldBegin(ctx)
+				if err != nil {
+					return "", domain.Location{}, err
+				}
+				if ft == thrift.STOP {
+					break
+				}
+				switch fid {
+				case 1:
+					token, err = in.ReadString(ctx)
+				case 2:
+					// location struct
+					if ft != thrift.STRUCT {
+						err = in.Skip(ctx, ft)
+					} else {
+						var l domain.Location
+						l, err = readLocation(ctx, in)
+						loc = l
+					}
+				default:
+					err = in.Skip(ctx, ft)
+				}
+				if err != nil {
+					return "", domain.Location{}, err
+				}
+				if err := in.ReadFieldEnd(ctx); err != nil {
+					return "", domain.Location{}, err
+				}
+			}
+			if err := in.ReadStructEnd(ctx); err != nil {
+				return "", domain.Location{}, err
+			}
+		} else {
+			if err := in.Skip(ctx, fieldType); err != nil {
+				return "", domain.Location{}, err
+			}
 		}
 		if err := in.ReadFieldEnd(ctx); err != nil {
 			return "", domain.Location{}, err

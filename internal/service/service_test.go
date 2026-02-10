@@ -18,7 +18,7 @@ type memStore struct {
 }
 
 type memTx struct {
-	store *memStore
+	store  *memStore
 	closed bool
 }
 
@@ -194,6 +194,16 @@ func TestComputeETA(t *testing.T) {
 	if eta == nil || *eta <= 0 {
 		t.Fatalf("expected ETA to be positive")
 	}
+
+	// Reserved handoff: if we have a handoff origin, ETA should be computed from there.
+	handoff := domain.Location{Lat: 24.72, Lng: 46.68}
+	order.HandoffOrigin = &handoff
+	order.Status = domain.OrderStatusReserved
+	eta = ComputeETA(order, nil, 10)
+	if eta == nil || *eta <= 0 {
+		t.Fatalf("expected ETA to be positive for reserved handoff")
+	}
+
 	order.Status = domain.OrderStatusDelivered
 	eta = ComputeETA(order, nil, 10)
 	if eta != nil {
@@ -334,5 +344,60 @@ func TestMarkBrokenCreatesHandoff(t *testing.T) {
 	}
 	if order.HandoffOrigin == nil || order.HandoffOrigin.Lat != loc.Lat || order.HandoffOrigin.Lng != loc.Lng {
 		t.Fatalf("expected handoff origin set")
+	}
+}
+
+func TestMarkBroken_RequeuesReservedOrder(t *testing.T) {
+	store := newMemStore()
+	svc := New(store, 10)
+	now := time.Now().UTC()
+	droneID := "drone-1"
+	orderID := "order-1"
+	loc := &domain.Location{Lat: 5, Lng: 6}
+	store.drones[droneID] = &domain.Drone{
+		ID:             droneID,
+		Status:         domain.DroneStatusActive,
+		CurrentOrderID: &orderID,
+		LastLocation:   loc,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+	reservedAt := now
+	store.orders[orderID] = &domain.Order{
+		ID:              orderID,
+		UserID:          "user-1",
+		Origin:          domain.Location{Lat: 1, Lng: 1},
+		Destination:     domain.Location{Lat: 2, Lng: 2},
+		Status:          domain.OrderStatusReserved,
+		AssignedDroneID: &droneID,
+		ReservedAt:      &reservedAt,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+		HandoffOrigin:   &domain.Location{Lat: 99, Lng: 99},
+	}
+
+	_, err := svc.DroneMarkBroken(context.Background(), droneID)
+	if err != nil {
+		t.Fatalf("mark broken: %v", err)
+	}
+	order, err := store.GetOrder(context.Background(), orderID)
+	if err != nil {
+		t.Fatalf("get order: %v", err)
+	}
+	if order.Status != domain.OrderStatusCreated {
+		t.Fatalf("expected requeued CREATED, got %s", order.Status)
+	}
+	if order.AssignedDroneID != nil {
+		t.Fatalf("expected assigned drone cleared")
+	}
+	if order.ReservedAt != nil {
+		t.Fatalf("expected reserved_at cleared")
+	}
+	if order.HandoffOrigin != nil {
+		t.Fatalf("expected handoff_origin cleared")
+	}
+	drone, _ := store.GetDrone(context.Background(), droneID)
+	if drone.CurrentOrderID != nil {
+		t.Fatalf("expected drone current order cleared")
 	}
 }
